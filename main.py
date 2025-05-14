@@ -3,11 +3,11 @@ import dht
 import time
 import network
 import socket
-d = dht.DHT11(Pin(1))
+import gc
+d = dht.DHT11(Pin(0))
 
 
 led = Pin(2, Pin.OUT)
-temp = 0
 
 ssid = 'zarizeni_sveta'
 password = 'rentales'
@@ -33,24 +33,31 @@ else:
     print('Connection successful!')
     network_info = wlan.ifconfig()
     print('IP address:', network_info[0])
+
 def start_server():
+    gc.collect()  # uvolnění paměti
+
     addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
-
     s = socket.socket()
-    s.bind(addr)
-    s.listen(1)
 
-    print('Listening on', addr)
+    try:
+        s.bind(addr)
+    except OSError as e:
+        print("Port 80 je již obsazen. Restartuj zařízení.")
+        raise e
+
+    s.listen(1)
+    print('Server běží na', addr)
 
     while True:
         cl, addr = s.accept()
-        print('Client connected from', addr)
-        
-        d.measure()
-        temp = d.temperature()
-        hum = d.humidity()
+        print('Klient připojen z', addr)
 
         try:
+            d.measure()
+            temp = d.temperature()
+            hum = d.humidity()
+
             request = cl.recv(1024)
             request = str(request)
 
@@ -58,10 +65,10 @@ def start_server():
             cl.send('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
             cl.send(response)
         except Exception as e:
-            print('Error:', e)
+            print('Chyba:', e)
         finally:
             cl.close()
-            s.close()
+
 
 # Adjust dthdata to take temp and hum
 def dthdata(temp, hum):
@@ -73,6 +80,5 @@ def dthdata(temp, hum):
         return f"<html><body><h1>Error loading HTML: {e}</h1></body></html>"
 
 
-while wlan.status()==3:
+if wlan.status()==3:
     start_server()
-
